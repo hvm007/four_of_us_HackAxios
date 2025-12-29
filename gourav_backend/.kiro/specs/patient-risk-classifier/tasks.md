@@ -18,9 +18,6 @@ This implementation plan creates a Python-based RESTful API system for patient r
     - Implement medical range validation for vital signs
     - _Requirements: 1.1, 1.2, 2.1, 6.1_
 
-
-
-    
   - [x] 2.2 Write property test for data validation
 
     - **Property 4: Invalid Data Rejection**
