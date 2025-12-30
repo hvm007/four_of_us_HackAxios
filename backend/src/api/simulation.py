@@ -20,6 +20,7 @@ from src.repositories.patient_repository import PatientRepository
 from src.repositories.vital_signs_repository import VitalSignsRepository
 from src.repositories.risk_assessment_repository import RiskAssessmentRepository
 from src.models.db_models import Patient, VitalSigns, RiskAssessment, ArrivalModeEnum, RiskCategoryEnum
+from src.services.icu_service import ICUService
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +302,18 @@ async def simulation_tick(db: Session = Depends(get_db)):
             
             # Update patient last_updated
             patient.last_updated = sim_time
+            
+            # Check if patient should be admitted to ICU (HIGH risk)
+            if risk_category == 'HIGH':
+                try:
+                    icu_service = ICUService(db)
+                    icu_service.check_and_admit_high_risk(
+                        patient_id=patient.patient_id,
+                        risk_score=risk_score,
+                        risk_category=risk_category
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to check ICU admission for patient {patient.patient_id}: {e}")
             
             updated_count += 1
         
