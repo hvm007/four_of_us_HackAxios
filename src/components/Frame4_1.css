@@ -52,6 +52,44 @@
   gap: 0;
 }
 
+/* Risk profile selector */
+.risk-profile-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.risk-profile-selector label {
+  font-weight: 600;
+  color: #0B3C43;
+}
+
+.risk-profile-selector select {
+  flex: 1;
+  height: 35px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 0 10px;
+}
+
+.regenerate-btn {
+  padding: 8px 12px;
+  background: #00BDB7;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.regenerate-btn:hover {
+  background: #00a5a0;
+}
+
 /* Table-style form */
 .form-table {
   width: 100%;
@@ -86,6 +124,10 @@
   background: rgba(255, 200, 200, 0.15);
 }
 
+.form-table tbody tr.error-row {
+  background: rgba(220, 38, 38, 0.1);
+}
+
 .form-table .field-label {
   font-family: 'Inter', sans-serif;
   font-weight: 600;
@@ -116,10 +158,78 @@
   color: rgba(11, 60, 67, 0.5);
 }
 
+/* Input with button */
+.input-with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-button input {
+  flex: 1;
+}
+
+.small-btn {
+  padding: 0 10px;
+  background: #00BDB7;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.small-btn:hover {
+  background: #00a5a0;
+}
+
+/* Error text */
+.error-text {
+  color: #DC2626;
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+}
+
+/* Toast notification */
+.toast {
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.toast.success {
+  background: #D1FAE5;
+  color: #065F46;
+}
+
+.toast.error {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
 .form-actions {
   display: flex;
   justify-content: center;
+  gap: 15px;
   margin-top: 25px;
+}
+
+.cancel-btn {
+  padding: 12px 40px;
+  background: #E5E5E5;
+  color: #0B3C43;
+  border: none;
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cancel-btn:hover {
+  background: #d0d0d0;
 }
 
 .add-btn {
@@ -137,4 +247,9 @@
 
 .add-btn:hover {
   background: #0a3339;
+}
+
+.add-btn:disabled {
+  background: #9CA3AF;
+  cursor: not-allowed;
 }

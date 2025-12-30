@@ -118,24 +118,23 @@ const Frame4 = () => {
 
   const handleAddPatient = async (newPatient) => {
     try {
-      console.log('Received from Frame4_1:', newPatient);
-      
       // Don't send timestamp - backend will use latest DB timestamp
       const patientData = {
         patient_id: newPatient.id,
         arrival_mode: newPatient.arrivalMode,
-        acuity_level: newPatient.acuityLevel,
+        acuity_level: parseInt(newPatient.acuityLevel) || 3,
         initial_vitals: {
-          heart_rate: newPatient.heartRate,
-          systolic_bp: newPatient.systolicBP,
-          diastolic_bp: newPatient.diastolicBP,
-          respiratory_rate: newPatient.respiratoryRate,
-          oxygen_saturation: newPatient.oxygenSat,
-          temperature: newPatient.temperature,
+          heart_rate: parseFloat(newPatient.heartRate),
+          systolic_bp: parseFloat(newPatient.systolicBP),
+          diastolic_bp: parseFloat(newPatient.diastolicBP),
+          respiratory_rate: parseFloat(newPatient.respiratoryRate),
+          oxygen_saturation: parseFloat(newPatient.oxygenSat),
+          temperature: parseFloat(newPatient.temperature),
+          // No timestamp - backend will use latest DB timestamp
         }
       };
       
-      console.log('Sending to backend:', JSON.stringify(patientData, null, 2));
+      console.log('Registering patient with data:', patientData);
       
       await registerPatient(patientData);
       setShowAddPatient(false);
