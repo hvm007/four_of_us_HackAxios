@@ -132,15 +132,15 @@ export const SimulationProvider = ({ children }) => {
     return new Date(startSimTime.getTime() + simElapsedMs);
   }, [isRunning, startSimTime, realStartTime, timeScale, simulatedTime]);
 
-  // Update simulated time locally (smooth updates between ticks)
+  // Update simulated time locally (for clock display only - updates every 1 second)
   useEffect(() => {
     if (!isRunning || !startSimTime || !realStartTime) return;
 
-    // Update time display every 100ms for smooth display
+    // Update time display every 1 second for clock display
     timeUpdateRef.current = setInterval(() => {
       const newSimTime = getCurrentSimTime();
       setSimulatedTime(newSimTime);
-    }, 100);
+    }, 1000);
 
     return () => {
       if (timeUpdateRef.current) {
@@ -149,11 +149,11 @@ export const SimulationProvider = ({ children }) => {
     };
   }, [isRunning, startSimTime, realStartTime, getCurrentSimTime]);
 
-  // Auto-tick every 60 real seconds (= 30 simulated minutes)
+  // Auto-tick every 60 real seconds (= 5 simulated minutes) - this triggers data refresh
   useEffect(() => {
     if (!isRunning) return;
 
-    // Trigger tick every 60 seconds
+    // Trigger tick every 60 seconds (1 minute real time = 5 minutes simulated)
     tickIntervalRef.current = setInterval(() => {
       triggerTick();
     }, 60000);
@@ -161,7 +161,7 @@ export const SimulationProvider = ({ children }) => {
     // Initial tick after a short delay
     const initialTick = setTimeout(() => {
       triggerTick();
-    }, 500);
+    }, 1000);
 
     return () => {
       if (tickIntervalRef.current) {

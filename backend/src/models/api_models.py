@@ -56,10 +56,12 @@ class VitalSignsBase(BaseModel):
 
 
 class VitalSignsWithTimestamp(VitalSignsBase):
-    """Vital signs model with timestamp for initial registration."""
+    """Vital signs model with optional timestamp for initial registration.
+    If timestamp is not provided, the system will use the latest timestamp from the database.
+    """
 
-    timestamp: datetime = Field(
-        ..., description="Timestamp when vital signs were recorded"
+    timestamp: Optional[datetime] = Field(
+        None, description="Timestamp when vital signs were recorded. If not provided, uses latest DB timestamp."
     )
 
 

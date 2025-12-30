@@ -13,7 +13,12 @@ const API_BASE_URL = 'http://localhost:8000';
 async function handleResponse(response) {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Unknown error' }));
-    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+    console.error('API Error Response:', error);
+    // For 422 validation errors, show the detail
+    if (response.status === 422 && error.detail) {
+      throw new Error(JSON.stringify(error.detail));
+    }
+    throw new Error(error.detail || error.message || `HTTP error! status: ${response.status}`);
   }
   return response.json();
 }

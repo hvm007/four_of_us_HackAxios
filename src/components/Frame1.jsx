@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
 import { useSimulation } from '../contexts/SimulationContext';
-import { getICUCapacity, getAllPatients, getHighRiskPatients, getPatientStatus } from '../services/api';
+import { getICUCapacity, getAllPatients, getHighRiskPatients } from '../services/api';
 import './Frame1.css';
 
 const getYAxisMax = (data, key = 'value') => {
@@ -29,6 +29,10 @@ const Frame1 = () => {
   const [forecastERData, setForecastERData] = useState([]);
   const [forecastICUData, setForecastICUData] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Use ref to access simulatedTime without triggering re-fetches
+  const simTimeRef = useRef(simulatedTime);
+  useEffect(() => { simTimeRef.current = simulatedTime; }, [simulatedTime]);
 
   useEffect(() => {
     const initSimulation = async () => {
@@ -64,6 +68,7 @@ const Frame1 = () => {
       }
 
       generateTrendData(patientIds.length, icuData.beds_occupied);
+      console.log(`[Frame1] Data refreshed at tick ${tickCount}`);
     } catch (error) {
       console.error('Failed to fetch data:', error);
     } finally {
@@ -72,7 +77,8 @@ const Frame1 = () => {
   }, [tickCount]);
 
   const generateTrendData = useCallback((currentERCount, currentICUCount) => {
-    if (!simulatedTime) return;
+    const currentSimTime = simTimeRef.current;
+    if (!currentSimTime) return;
     
     const pastLabels = generateTimeLabels(5, 12, 'past');
     const erTrend = pastLabels.map((label) => ({
@@ -90,9 +96,10 @@ const Frame1 = () => {
     const futureLabels = generateTimeLabels(5, 12, 'future');
     setForecastERData(futureLabels.map(label => ({ time: label.time, value: Math.max(0, currentERCount + Math.floor(Math.random() * 4) - 2) })));
     setForecastICUData(futureLabels.map(label => ({ time: label.time, value: Math.max(0, currentICUCount + Math.floor(Math.random() * 3) - 1) })));
-  }, [simulatedTime, generateTimeLabels]);
+  }, [generateTimeLabels]);
 
-  useEffect(() => { fetchData(); }, [tickCount, fetchData]);
+  // Only fetch on tickCount changes
+  useEffect(() => { fetchData(); }, [tickCount]);
 
   const handleLogout = () => navigate('/');
   const handleER = () => navigate('/er');

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSimulation } from '../contexts/SimulationContext';
 import Frame4_1 from './Frame4_1';
@@ -17,6 +17,10 @@ const Frame4 = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Use ref to access simulatedTime without triggering re-fetches
+  const simTimeRef = useRef(simulatedTime);
+  useEffect(() => { simTimeRef.current = simulatedTime; }, [simulatedTime]);
 
   useEffect(() => {
     const initSimulation = async () => {
@@ -71,6 +75,7 @@ const Frame4 = () => {
       // Sort by timestamp (most recent first)
       allLogs.sort((a, b) => b.timestamp - a.timestamp);
       setPatientLogs(allLogs);
+      console.log(`[Frame4] Data refreshed at tick ${tickCount}`);
     } catch (err) {
       console.error('Failed to fetch patient logs:', err);
       setError('Failed to load patient data. Please ensure the backend server is running.');
@@ -79,7 +84,8 @@ const Frame4 = () => {
     }
   }, [tickCount]);
 
-  useEffect(() => { fetchPatientLogs(); }, [tickCount, fetchPatientLogs]);
+  // Only fetch on tickCount changes
+  useEffect(() => { fetchPatientLogs(); }, [tickCount]);
 
   const handleLogout = () => navigate('/');
   const handleOverview = () => navigate('/dashboard');
@@ -112,20 +118,24 @@ const Frame4 = () => {
 
   const handleAddPatient = async (newPatient) => {
     try {
+      console.log('Received from Frame4_1:', newPatient);
+      
+      // Don't send timestamp - backend will use latest DB timestamp
       const patientData = {
         patient_id: newPatient.id,
         arrival_mode: newPatient.arrivalMode,
-        acuity_level: newPatient.acuityLevel || 3,
+        acuity_level: newPatient.acuityLevel,
         initial_vitals: {
           heart_rate: newPatient.heartRate,
           systolic_bp: newPatient.systolicBP,
-          diastolic_bp: newPatient.diastolicBP || Math.round(newPatient.systolicBP * 0.65),
+          diastolic_bp: newPatient.diastolicBP,
           respiratory_rate: newPatient.respiratoryRate,
           oxygen_saturation: newPatient.oxygenSat,
           temperature: newPatient.temperature,
-          timestamp: simulatedTime ? simulatedTime.toISOString() : new Date().toISOString(),
         }
       };
+      
+      console.log('Sending to backend:', JSON.stringify(patientData, null, 2));
       
       await registerPatient(patientData);
       setShowAddPatient(false);

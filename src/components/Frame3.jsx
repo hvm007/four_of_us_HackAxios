@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
 import { useSimulation } from '../contexts/SimulationContext';
 import './Frame3.css';
-import { getICUCapacity, getICUOccupancyHistory } from '../services/api';
+import { getICUCapacity } from '../services/api';
 
 const getYAxisMax = (data) => {
   if (!data || data.length === 0) return 10;
@@ -21,6 +21,10 @@ const Frame3 = () => {
   const [forecastData, setForecastData] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Use ref to access simulatedTime without triggering re-fetches
+  const simTimeRef = useRef(simulatedTime);
+  useEffect(() => { simTimeRef.current = simulatedTime; }, [simulatedTime]);
+
   useEffect(() => {
     const initSimulation = async () => {
       if (!isRunning) {
@@ -31,13 +35,12 @@ const Frame3 = () => {
   }, []);
 
   const fetchAllData = useCallback(async () => {
-    if (!simulatedTime) return;
-    
     try {
       setLoading(true);
       const data = await getICUCapacity();
       setCapacity(data);
       generateForecast(data.beds_occupied);
+      console.log(`[Frame3] Data refreshed at tick ${tickCount}`);
     } catch (err) {
       console.warn('Could not fetch ICU capacity:', err);
       setCapacity({ total_beds: 15, beds_occupied: 7, beds_available: 8, occupancy_percentage: 46.67, high_risk_patients: 0 });
@@ -45,13 +48,14 @@ const Frame3 = () => {
     } finally {
       setLoading(false);
     }
-  }, [simulatedTime]);
+  }, [tickCount]);
 
   const generateForecast = useCallback((currentOccupancy) => {
-    if (!simulatedTime) return;
+    const currentSimTime = simTimeRef.current;
+    if (!currentSimTime) return;
     
     const futureLabels = generateTimeLabels(60, 6, 'future');
-    const forecast = futureLabels.map((label, i) => {
+    const forecast = futureLabels.map((label) => {
       const variation = Math.floor(Math.random() * 5) - 2;
       const predicted = Math.max(0, currentOccupancy + variation);
       return {
@@ -62,9 +66,10 @@ const Frame3 = () => {
       };
     });
     setForecastData(forecast);
-  }, [simulatedTime, generateTimeLabels]);
+  }, [generateTimeLabels]);
 
-  useEffect(() => { fetchAllData(); }, [tickCount, fetchAllData]);
+  // Only fetch on tickCount changes
+  useEffect(() => { fetchAllData(); }, [tickCount]);
 
   const handleLogout = () => navigate('/');
   const handleOverview = () => navigate('/dashboard');

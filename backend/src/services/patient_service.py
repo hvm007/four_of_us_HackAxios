@@ -61,7 +61,7 @@ class PatientService:
         This method handles the complete patient registration process:
         1. Validates patient data and business rules
         2. Creates patient record
-        3. Stores initial vital signs
+        3. Stores initial vital signs (using latest DB timestamp if not provided)
         4. Triggers initial risk assessment (handled by RiskAssessmentService)
         
         Args:
@@ -75,6 +75,9 @@ class PatientService:
             ValidationError: If registration data is invalid
             PatientServiceError: For other business logic errors
         """
+        from sqlalchemy import func
+        from src.models.db_models import VitalSigns as VitalSignsModel
+        
         try:
             # Validate business rules
             self._validate_registration_data(registration_data)
@@ -85,15 +88,33 @@ class PatientService:
                     f"Patient with ID {registration_data.patient_id} already exists"
                 )
             
+            # Determine timestamp: use provided or get latest from DB
+            if registration_data.initial_vitals.timestamp:
+                vitals_timestamp = registration_data.initial_vitals.timestamp
+            else:
+                # Get the latest timestamp from the database
+                latest_timestamp = self.db.query(func.max(VitalSignsModel.timestamp)).scalar()
+                if latest_timestamp:
+                    vitals_timestamp = latest_timestamp
+                else:
+                    # No existing data, use current time
+                    vitals_timestamp = datetime.utcnow()
+                logger.info(f"Using latest DB timestamp for new patient: {vitals_timestamp}")
+            
             # Convert API model arrival mode to database enum
             arrival_mode_enum = self._convert_arrival_mode(registration_data.arrival_mode)
             
-            # Create patient record
+            # Create patient record with the determined timestamp as registration time
             patient = self.patient_repo.create(
                 patient_id=registration_data.patient_id,
                 arrival_mode=arrival_mode_enum,
                 acuity_level=registration_data.acuity_level
             )
+            
+            # Update patient registration time to match vitals timestamp
+            patient.registration_time = vitals_timestamp
+            patient.last_updated = vitals_timestamp
+            self.db.commit()
             
             # Store initial vital signs
             initial_vitals = self.vital_signs_repo.create(
@@ -104,11 +125,11 @@ class PatientService:
                 respiratory_rate=registration_data.initial_vitals.respiratory_rate,
                 oxygen_saturation=registration_data.initial_vitals.oxygen_saturation,
                 temperature=registration_data.initial_vitals.temperature,
-                timestamp=registration_data.initial_vitals.timestamp,
+                timestamp=vitals_timestamp,
                 recorded_by="REGISTRATION_SYSTEM"
             )
             
-            logger.info(f"Successfully registered patient {patient.patient_id} with initial vitals")
+            logger.info(f"Successfully registered patient {patient.patient_id} with initial vitals at {vitals_timestamp}")
             
             # Note: Risk assessment will be triggered by RiskAssessmentService
             # when it detects new vital signs (Requirements 1.3)
@@ -268,24 +289,25 @@ class PatientService:
         if not (1 <= registration_data.acuity_level <= 5):
             raise ValidationError(f"Acuity level must be between 1 and 5, got {registration_data.acuity_level}")
         
-        # Validate initial vitals timestamp is not in the future
-        current_time = datetime.utcnow()
+        # Validate initial vitals timestamp only if provided
         timestamp = registration_data.initial_vitals.timestamp
-        
-        # Handle timezone-aware timestamps by converting to naive UTC
-        if timestamp.tzinfo is not None:
-            timestamp = timestamp.replace(tzinfo=None)
-        
-        if timestamp > current_time:
-            raise ValidationError("Initial vitals timestamp cannot be in the future")
-        
-        # Validate timestamp is not too far in the past (business rule)
-        time_diff = current_time - timestamp
-        if time_diff.days > 7:  # More than 7 days old
-            logger.warning(
-                f"Patient {registration_data.patient_id} has initial vitals timestamp "
-                f"from {time_diff.days} days ago"
-            )
+        if timestamp is not None:
+            current_time = datetime.utcnow()
+            
+            # Handle timezone-aware timestamps by converting to naive UTC
+            if timestamp.tzinfo is not None:
+                timestamp = timestamp.replace(tzinfo=None)
+            
+            if timestamp > current_time:
+                raise ValidationError("Initial vitals timestamp cannot be in the future")
+            
+            # Validate timestamp is not too far in the past (business rule)
+            time_diff = current_time - timestamp
+            if time_diff.days > 7:  # More than 7 days old
+                logger.warning(
+                    f"Patient {registration_data.patient_id} has initial vitals timestamp "
+                    f"from {time_diff.days} days ago"
+                )
         
         # Additional business rule: High acuity patients (4-5) arriving by walk-in should be flagged
         if (registration_data.acuity_level >= 4 and 

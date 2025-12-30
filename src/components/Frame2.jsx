@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
 import { useSimulation } from '../contexts/SimulationContext';
@@ -26,6 +26,10 @@ const Frame2 = () => {
   const [patientsExceedingThreshold, setPatientsExceedingThreshold] = useState(0);
   const [forecastData, setForecastData] = useState([]);
   const [arrivalData, setArrivalData] = useState([]);
+  
+  // Use ref to access simulatedTime without triggering re-fetches
+  const simTimeRef = useRef(simulatedTime);
+  useEffect(() => { simTimeRef.current = simulatedTime; }, [simulatedTime]);
 
   useEffect(() => {
     const initSimulation = async () => {
@@ -36,8 +40,10 @@ const Frame2 = () => {
     initSimulation();
   }, []);
 
+  // Fetch data only on tickCount changes (every 60 seconds)
   const fetchERData = useCallback(async () => {
-    if (!simulatedTime) return;
+    const currentSimTime = simTimeRef.current;
+    if (!currentSimTime) return;
     
     try {
       setLoading(true);
@@ -52,9 +58,9 @@ const Frame2 = () => {
         try {
           const status = await getPatientStatus(patientId);
           const registrationTime = new Date(status.registration_time);
-          const waitTimeMinutes = Math.round((simulatedTime - registrationTime) / (1000 * 60));
+          const waitTimeMinutes = Math.round((currentSimTime - registrationTime) / (1000 * 60));
           
-          totalWaitTime += Math.min(waitTimeMinutes, 120);
+          totalWaitTime += Math.min(Math.abs(waitTimeMinutes), 120);
           
           if (waitTimeMinutes > waitThreshold) {
             exceedingThreshold++;
@@ -83,14 +89,19 @@ const Frame2 = () => {
       }));
       setForecastData(forecast);
       
+      console.log(`[Frame2] Data refreshed at tick ${tickCount}`);
+      
     } catch (error) {
       console.error('Failed to fetch ER data:', error);
     } finally {
       setLoading(false);
     }
-  }, [simulatedTime, generateTimeLabels, tickCount]);
+  }, [tickCount, generateTimeLabels]);
 
-  useEffect(() => { fetchERData(); }, [tickCount, fetchERData]);
+  // Only fetch on tickCount changes
+  useEffect(() => { 
+    fetchERData(); 
+  }, [tickCount]);
 
   const handleLogout = () => navigate('/');
   const handleOverview = () => navigate('/dashboard');
