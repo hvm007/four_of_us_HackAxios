@@ -1,0 +1,248 @@
+.frame2 {
+  width: 100%;
+  min-height: 100vh;
+  background: #A8C8C7;
+  position: relative;
+  padding-bottom: 40px;
+}
+
+/* Sidebar */
+.frame2 .sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 200px;
+  height: 100vh;
+  background: #E5E5E5;
+  z-index: 10;
+}
+
+.frame2 .sidebar-menu {
+  padding-top: 70px;
+  padding-left: 10px;
+}
+
+.frame2 .menu-item {
+  width: 180px;
+  height: 46px;
+  background: #E5E5E5;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  padding-left: 14px;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.frame2 .menu-item.active {
+  background: #0B3C43;
+}
+
+.frame2 .menu-item.active span {
+  color: #FFFFFF;
+}
+
+.frame2 .menu-item.active .menu-icon {
+  filter: brightness(0) invert(1);
+}
+
+.frame2 .menu-item span {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: #0B3C43;
+}
+
+.frame2 .menu-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+/* Header */
+.frame2 .header {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 50px;
+  background: #F2F2F2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  z-index: 20;
+  box-sizing: border-box;
+}
+
+.frame2 .header-left {
+  display: flex;
+  align-items: center;
+}
+
+.frame2 .header-logo {
+  width: 50px;
+  height: 28px;
+  object-fit: cover;
+  margin-left: 0;
+}
+
+.frame2 .header-brand {
+  font-family: 'Kaisei Decol', serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #0B3C43;
+  margin-left: 2px;
+}
+
+.frame2 .header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.frame2 .logout-text {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: #285655;
+  cursor: pointer;
+}
+
+.frame2 .logout-icon {
+  width: 22px;
+  height: 28px;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+/* Main Content */
+.frame2 .main-content {
+  margin-left: 200px;
+  padding: 65px 30px 30px 30px;
+}
+
+.frame2 .section-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  color: #082D32;
+  margin-bottom: 16px;
+  margin-top: 28px;
+}
+
+.frame2 .section-title:first-of-type {
+  margin-top: 0;
+}
+
+/* Metrics */
+.frame2 .metrics-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.frame2 .metrics-row.center {
+  grid-template-columns: 1fr;
+  max-width: 50%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.frame2 .metric-card {
+  height: 95px;
+  background: #FFFFFF;
+  border-radius: 24px;
+  padding: 14px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.frame2 .metric-card-tall {
+  height: 110px;
+}
+
+.frame2 .metric-label {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  color: #082D32;
+}
+
+.frame2 .metric-value {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 26px;
+  color: #00BDB7;
+  margin-top: 8px;
+}
+
+.frame2 .metric-value-large {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 30px;
+  color: #00BDB7;
+  margin-top: 4px;
+}
+
+.frame2 .metric-note {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  color: #0B3C43;
+  margin-top: 4px;
+}
+
+/* Charts */
+.frame2 .chart-card-wide {
+  width: 100%;
+  height: 175px;
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 18px 14px 10px;
+  margin-bottom: 30px;
+}
+
+.frame2 .chart-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.frame2 .legend-line {
+  width: 12px;
+  height: 2px;
+  background: #00B6B0;
+}
+
+.frame2 .legend-text {
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
+  font-size: 10px;
+  color: #082D32;
+}
+
+/* Prioritization Button */
+.frame2 .prioritization-btn {
+  width: 100%;
+  height: 70px;
+  background: #082D32;
+  border-radius: 18px;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 22px;
+  color: #FFFFFF;
+  cursor: pointer;
+  margin-top: 28px;
+  transition: background 0.2s;
+}
+
+.frame2 .prioritization-btn:hover {
+  background: #0a3d44;
+}
