@@ -244,18 +244,24 @@ class PatientService:
         """
         Validate patient registration data according to business rules.
         
+        Implements Requirement 6.4: Input sanitization and validation.
+        
         Args:
             registration_data: Patient registration information
             
         Raises:
             ValidationError: If validation fails
         """
-        # Validate patient ID format (basic validation)
-        if not registration_data.patient_id.strip():
-            raise ValidationError("Patient ID cannot be empty")
+        # Import here to avoid circular imports
+        from src.utils.validation import validate_patient_id, sanitize_string
         
-        if len(registration_data.patient_id) > 50:
-            raise ValidationError("Patient ID cannot exceed 50 characters")
+        # Validate and sanitize patient ID (Requirement 6.2, 6.4)
+        try:
+            sanitized_id = validate_patient_id(registration_data.patient_id)
+            # Update the registration data with sanitized ID
+            registration_data.patient_id = sanitized_id
+        except ValueError as e:
+            raise ValidationError(f"Invalid patient ID: {str(e)}")
         
         # Validate acuity level
         if not (1 <= registration_data.acuity_level <= 5):
@@ -272,6 +278,14 @@ class PatientService:
         if timestamp > current_time:
             raise ValidationError("Initial vitals timestamp cannot be in the future")
         
+        # Validate timestamp is not too far in the past (business rule)
+        time_diff = current_time - timestamp
+        if time_diff.days > 7:  # More than 7 days old
+            logger.warning(
+                f"Patient {registration_data.patient_id} has initial vitals timestamp "
+                f"from {time_diff.days} days ago"
+            )
+        
         # Additional business rule: High acuity patients (4-5) arriving by walk-in should be flagged
         if (registration_data.acuity_level >= 4 and 
             registration_data.arrival_mode == ArrivalMode.WALK_IN):
@@ -280,7 +294,28 @@ class PatientService:
                 f"arrived by walk-in - may need immediate attention"
             )
         
+        # Validate vital signs are within reasonable ranges for the acuity level
+        vitals = registration_data.initial_vitals
+        if registration_data.acuity_level >= 4:  # High acuity patients
+            # Check for critical vital signs that match high acuity
+            critical_indicators = 0
+            if vitals.heart_rate > 120 or vitals.heart_rate < 50:
+                critical_indicators += 1
+            if vitals.systolic_bp > 180 or vitals.systolic_bp < 90:
+                critical_indicators += 1
+            if vitals.oxygen_saturation < 90:
+                critical_indicators += 1
+            if vitals.temperature > 39.0 or vitals.temperature < 35.0:
+                critical_indicators += 1
+            
+            if critical_indicators == 0:
+                logger.warning(
+                    f"High acuity patient {registration_data.patient_id} (level {registration_data.acuity_level}) "
+                    f"has normal vital signs - verify acuity level"
+                )
+        
         logger.debug(f"Registration data validation passed for patient {registration_data.patient_id}")
+    
     
     def _convert_arrival_mode(self, arrival_mode: ArrivalMode) -> ArrivalModeEnum:
         """

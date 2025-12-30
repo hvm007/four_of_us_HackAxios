@@ -125,22 +125,22 @@ This implementation plan creates a Python-based RESTful API system for patient r
     - GET /patients/{id}/history - Historical data
     - _Requirements: 2.1, 2.2, 2.3, 4.2_
 
-  - [ ] 6.5 Write property test for historical data chronological ordering
+  - [x] 6.5 Write property test for historical data chronological ordering
 
     - **Property 11: Historical Data Chronological Ordering**
     - **Validates: Requirements 4.2**
 
-  - [ ] 6.6 Implement comprehensive error handling
+  - [x] 6.6 Implement comprehensive error handling
     - Add input sanitization and security measures
     - Implement proper error responses without information leakage
     - _Requirements: 6.2, 6.4, 6.5_
 
-  - [ ] 6.7 Write property test for input sanitization security
+  - [x] 6.7 Write property test for input sanitization security
 
     - **Property 14: Input Sanitization Security**
     - **Validates: Requirements 6.4**
 
-- [ ] 7. Checkpoint - API layer validation
+- [x] 7. Checkpoint - API layer validation
   - Ensure all API tests pass, ask the user if questions arise.
 
 - [ ] 8. Implement comprehensive error handling and resilience
@@ -149,7 +149,8 @@ This implementation plan creates a Python-based RESTful API system for patient r
     - Add graceful degradation for external service failures
     - _Requirements: 3.4, 4.5, 5.3, 5.5, 6.3_
 
-  - [ ]* 8.2 Write property test for error handling preserves system state
+  - [ ] 8.2 Write property test for error handling preserves system state
+
     - **Property 13: Error Handling Preserves System State**
     - **Validates: Requirements 3.4, 4.5, 5.3, 5.5**
 

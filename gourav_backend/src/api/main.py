@@ -20,6 +20,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.models.api_models import ErrorResponse
 from src.utils.database import close_database, init_database
+from src.utils.validation import (
+    sanitize_string, 
+    validate_patient_id, 
+    sanitize_dict, 
+    DANGEROUS_PATTERNS,
+    create_safe_error_details
+)
 
 # Configure structured logging
 logging.basicConfig(
@@ -30,105 +37,46 @@ logging.basicConfig(
 logger = logging.getLogger("patient_risk_classifier")
 
 
-# Input sanitization patterns for security
-DANGEROUS_PATTERNS = [
-    r"<script[^>]*>.*?</script>",  # XSS script tags
-    r"javascript:",  # JavaScript protocol
-    r"on\w+\s*=",  # Event handlers
-    r"--",  # SQL comment
-    r";.*(?:drop|delete|truncate|alter|create|insert|update)",  # SQL injection
-    r"'\s*or\s*'",  # SQL injection OR
-    r"'\s*and\s*'",  # SQL injection AND
-    r"\$\{.*\}",  # Template injection
-    r"\{\{.*\}\}",  # Template injection
-]
-
-
-def sanitize_string(value: str) -> str:
-    """
-    Sanitize a string value to prevent injection attacks.
-    
-    Args:
-        value: The string to sanitize
-        
-    Returns:
-        Sanitized string with dangerous patterns removed
-    """
-    if not isinstance(value, str):
-        return value
-    
-    sanitized = value
-    for pattern in DANGEROUS_PATTERNS:
-        sanitized = re.sub(pattern, "", sanitized, flags=re.IGNORECASE)
-    
-    # Remove null bytes
-    sanitized = sanitized.replace("\x00", "")
-    
-    return sanitized.strip()
-
-
-def sanitize_dict(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Recursively sanitize all string values in a dictionary.
-    
-    Args:
-        data: Dictionary to sanitize
-        
-    Returns:
-        Sanitized dictionary
-    """
-    if not isinstance(data, dict):
-        return data
-    
-    sanitized = {}
-    for key, value in data.items():
-        if isinstance(value, str):
-            sanitized[key] = sanitize_string(value)
-        elif isinstance(value, dict):
-            sanitized[key] = sanitize_dict(value)
-        elif isinstance(value, list):
-            sanitized[key] = [
-                sanitize_dict(item) if isinstance(item, dict)
-                else sanitize_string(item) if isinstance(item, str)
-                else item
-                for item in value
-            ]
-        else:
-            sanitized[key] = value
-    return sanitized
-
-
 def create_secure_error_response(
     error_code: str,
     user_message: str,
     request_id: str = None,
-    details: Dict[str, Any] = None
+    details: Dict[str, Any] = None,
+    log_details: str = None
 ) -> ErrorResponse:
     """
     Create a secure error response that doesn't expose sensitive information.
+    
+    Implements Requirement 6.5: User-friendly error messages without exposing 
+    sensitive system information.
     
     Args:
         error_code: Error type/code for categorization
         user_message: User-friendly error message
         request_id: Optional request ID for support reference
-        details: Optional safe details to include
+        details: Optional safe details to include in response
+        log_details: Optional detailed information for logging only (not in response)
         
     Returns:
         ErrorResponse with sanitized content
     """
+    # Log detailed error information for debugging (internal only)
+    if log_details:
+        logger.error(f"Error details for {error_code}: {log_details}")
+    
     safe_details = {}
     if request_id:
         safe_details["request_id"] = request_id
+    
     if details:
-        # Only include safe, non-sensitive details
-        safe_keys = {"field", "fields", "validation_errors", "allowed_values", "request_id"}
-        for key, value in details.items():
-            if key in safe_keys:
-                safe_details[key] = value
+        safe_details.update(create_safe_error_details(details))
+    
+    # Ensure error message is also sanitized
+    sanitized_message = sanitize_string(user_message) if isinstance(user_message, str) else user_message
     
     return ErrorResponse(
         error=error_code,
-        message=user_message,
+        message=sanitized_message,
         details=safe_details if safe_details else None
     )
 
@@ -186,12 +134,29 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
         
         # Sanitize query parameters
         # Note: Query params are read-only, so we log warnings for suspicious content
+        suspicious_params = []
         for key, value in request.query_params.items():
-            sanitized = sanitize_string(value)
-            if sanitized != value:
+            try:
+                sanitized = sanitize_string(value)
+                if sanitized != value:
+                    suspicious_params.append(key)
+            except ValueError as e:
                 logger.warning(
-                    f"[{request_id}] Potentially malicious content detected in query param '{key}'"
+                    f"[{request_id}] Malicious content detected in query param '{key}': {e}"
                 )
+                return JSONResponse(
+                    status_code=400,
+                    content=create_secure_error_response(
+                        error_code="INVALID_INPUT",
+                        user_message="Invalid characters detected in request parameters",
+                        request_id=request_id
+                    ).model_dump(mode='json')
+                )
+        
+        if suspicious_params:
+            logger.warning(
+                f"[{request_id}] Potentially malicious content detected in query params: {suspicious_params}"
+            )
         
         # Sanitize path parameters (check for suspicious patterns)
         path = request.url.path
@@ -202,13 +167,94 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
                 )
                 return JSONResponse(
                     status_code=400,
-                    content={
-                        "error": "INVALID_REQUEST",
-                        "message": "Invalid request path",
-                        "details": None,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
+                    content=create_secure_error_response(
+                        error_code="INVALID_REQUEST",
+                        user_message="Invalid request path detected",
+                        request_id=request_id,
+                        log_details=f"Suspicious path: {path}"
+                    ).model_dump(mode='json')
                 )
+        
+        # Check for path traversal attempts
+        if "../" in path or "..\\" in path:
+            logger.warning(f"[{request_id}] Path traversal attempt detected: {path}")
+            return JSONResponse(
+                status_code=400,
+                content=create_secure_error_response(
+                    error_code="INVALID_REQUEST",
+                    user_message="Invalid request path",
+                    request_id=request_id
+                ).model_dump(mode='json')
+            )
+        
+        return await call_next(request)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Middleware for adding security headers to responses."""
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        response = await call_next(request)
+        
+        # Add security headers (Requirement 6.4: Security measures)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        
+        # Remove server information (use del instead of pop for MutableHeaders)
+        if "Server" in response.headers:
+            del response.headers["Server"]
+        
+        return response
+
+
+class RateLimitingMiddleware(BaseHTTPMiddleware):
+    """Simple rate limiting middleware for basic protection."""
+    
+    def __init__(self, app, max_requests: int = 100, window_seconds: int = 60):
+        super().__init__(app)
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.requests = {}  # In production, use Redis or similar
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        client_ip = request.client.host if request.client else "unknown"
+        request_id = getattr(request.state, "request_id", "unknown")
+        current_time = time.time()
+        
+        # Clean old entries
+        cutoff_time = current_time - self.window_seconds
+        self.requests = {
+            ip: timestamps for ip, timestamps in self.requests.items()
+            if any(t > cutoff_time for t in timestamps)
+        }
+        
+        # Update current IP's requests
+        if client_ip not in self.requests:
+            self.requests[client_ip] = []
+        
+        # Remove old timestamps for this IP
+        self.requests[client_ip] = [
+            t for t in self.requests[client_ip] if t > cutoff_time
+        ]
+        
+        # Check rate limit
+        if len(self.requests[client_ip]) >= self.max_requests:
+            logger.warning(f"[{request_id}] Rate limit exceeded for IP: {client_ip}")
+            return JSONResponse(
+                status_code=429,
+                content=create_secure_error_response(
+                    error_code="RATE_LIMIT_EXCEEDED",
+                    user_message="Too many requests. Please try again later.",
+                    request_id=request_id,
+                    details={"retry_after": self.window_seconds}
+                ).model_dump(mode='json')
+            )
+        
+        # Add current request
+        self.requests[client_ip].append(current_time)
         
         return await call_next(request)
 
@@ -281,8 +327,14 @@ app.add_middleware(
 # Add request logging middleware
 app.add_middleware(RequestLoggingMiddleware)
 
+# Add security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
 # Add input sanitization middleware
 app.add_middleware(InputSanitizationMiddleware)
+
+# Add rate limiting middleware (basic protection)
+app.add_middleware(RateLimitingMiddleware, max_requests=100, window_seconds=60)
 
 
 # Global exception handler
@@ -291,19 +343,68 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     """Handle HTTP exceptions with consistent error response format."""
     request_id = getattr(request.state, "request_id", "unknown")
     
-    # Log the HTTP exception
-    logger.warning(
-        f"[{request_id}] HTTP {exc.status_code}: {exc.detail} "
-        f"- Path: {request.url.path}"
-    )
+    # Log the HTTP exception with appropriate level
+    if exc.status_code >= 500:
+        logger.error(
+            f"[{request_id}] HTTP {exc.status_code}: {exc.detail} "
+            f"- Path: {request.url.path}"
+        )
+    else:
+        logger.warning(
+            f"[{request_id}] HTTP {exc.status_code}: {exc.detail} "
+            f"- Path: {request.url.path}"
+        )
     
-    error_response = ErrorResponse(
-        error=f"HTTP_{exc.status_code}",
-        message=exc.detail,
-        details=getattr(exc, "details", None),
-    )
+    # Create secure error response based on status code
+    if exc.status_code == 404:
+        error_response = create_secure_error_response(
+            error_code="RESOURCE_NOT_FOUND",
+            user_message="The requested resource was not found",
+            request_id=request_id,
+            log_details=f"Original detail: {exc.detail}"
+        )
+    elif exc.status_code == 400:
+        error_response = create_secure_error_response(
+            error_code="BAD_REQUEST",
+            user_message="Invalid request data provided",
+            request_id=request_id,
+            details=getattr(exc, "details", None),
+            log_details=f"Original detail: {exc.detail}"
+        )
+    elif exc.status_code == 422:
+        error_response = create_secure_error_response(
+            error_code="VALIDATION_ERROR",
+            user_message="Request data validation failed",
+            request_id=request_id,
+            details=getattr(exc, "details", None),
+            log_details=f"Original detail: {exc.detail}"
+        )
+    elif exc.status_code == 429:
+        error_response = create_secure_error_response(
+            error_code="RATE_LIMIT_EXCEEDED",
+            user_message="Too many requests. Please try again later.",
+            request_id=request_id,
+            details={"retry_after": 60}
+        )
+    elif exc.status_code >= 500:
+        error_response = create_secure_error_response(
+            error_code="INTERNAL_SERVER_ERROR",
+            user_message="An internal server error occurred. Please try again later.",
+            request_id=request_id,
+            log_details=f"Original detail: {exc.detail}"
+        )
+    else:
+        # Generic error response for other status codes
+        error_response = create_secure_error_response(
+            error_code=f"HTTP_{exc.status_code}",
+            user_message="An error occurred while processing your request",
+            request_id=request_id,
+            log_details=f"Original detail: {exc.detail}"
+        )
+    
     return JSONResponse(
-        status_code=exc.status_code, content=error_response.model_dump(mode='json')
+        status_code=exc.status_code, 
+        content=error_response.model_dump(mode='json')
     )
 
 
@@ -338,9 +439,11 @@ async def validation_exception_handler(request: Request, exc: ValidationError) -
     errors = []
     for error in exc.errors():
         field = ".".join(str(loc) for loc in error["loc"])
+        # Sanitize error messages to prevent information leakage
+        safe_message = sanitize_string(error["msg"])
         errors.append({
             "field": field,
-            "message": error["msg"],
+            "message": safe_message,
             "type": error["type"]
         })
     
@@ -349,10 +452,12 @@ async def validation_exception_handler(request: Request, exc: ValidationError) -
         f"- Path: {request.url.path}"
     )
     
-    error_response = ErrorResponse(
-        error="VALIDATION_ERROR",
-        message="Invalid input data. Please check the provided values.",
-        details={"validation_errors": errors}
+    error_response = create_secure_error_response(
+        error_code="VALIDATION_ERROR",
+        user_message="Invalid input data. Please check the provided values.",
+        request_id=request_id,
+        details={"validation_errors": errors},
+        log_details=f"Full validation errors: {exc.errors()}"
     )
     return JSONResponse(status_code=422, content=error_response.model_dump(mode='json'))
 

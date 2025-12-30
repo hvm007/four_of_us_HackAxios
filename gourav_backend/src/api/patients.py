@@ -43,6 +43,7 @@ from src.services.risk_assessment_service import (
     RiskAssessmentServiceError,
 )
 from src.utils.database import get_db
+from src.utils.validation import validate_patient_id
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +297,7 @@ async def get_high_risk_patients(
     response_model=PatientStatus,
     responses={
         200: {"description": "Patient status retrieved successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid patient ID format"},
         404: {"model": ErrorResponse, "description": "Patient not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
@@ -327,25 +329,35 @@ async def get_patient_status(
         Current patient status including latest vitals and risk assessment
         
     Raises:
-        HTTPException: 404 if patient not found
+        HTTPException: 400 for invalid patient ID, 404 if patient not found
     """
     try:
+        # Validate and sanitize patient ID (Requirement 6.2, 6.4)
+        try:
+            sanitized_patient_id = validate_patient_id(patient_id)
+        except ValueError as e:
+            logger.warning(f"Invalid patient ID format: {patient_id} - {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid patient ID format: {str(e)}",
+            )
+        
         patient_service = PatientService(db)
         
         # Get patient status (includes latest vitals and risk assessment)
-        status = patient_service.get_patient_status(patient_id)
+        status = patient_service.get_patient_status(sanitized_patient_id)
         
-        logger.debug(f"Retrieved status for patient {patient_id}")
+        logger.debug(f"Retrieved status for patient {sanitized_patient_id}")
         return status
         
     except PatientNotFoundError as e:
-        logger.warning(f"Patient not found: {patient_id}")
+        logger.warning(f"Patient not found: {sanitized_patient_id}")
         raise HTTPException(
             status_code=404,
-            detail=f"Patient {patient_id} not found",
+            detail=f"Patient {sanitized_patient_id} not found",
         )
     except PatientServiceError as e:
-        logger.error(f"Error retrieving patient status for {patient_id}: {e}")
+        logger.error(f"Error retrieving patient status for {sanitized_patient_id}: {e}")
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve patient status. Please try again later.",

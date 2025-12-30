@@ -38,6 +38,7 @@ from src.services.vital_signs_service import (
     VitalSignsServiceError,
 )
 from src.utils.database import get_db
+from src.utils.validation import validate_patient_id
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ router = APIRouter(prefix="/patients", tags=["Vital Signs"])
     response_model=SuccessResponse,
     responses={
         200: {"description": "Vital signs updated successfully"},
-        400: {"model": ErrorResponse, "description": "Invalid vital signs data"},
+        400: {"model": ErrorResponse, "description": "Invalid vital signs data or patient ID"},
         404: {"model": ErrorResponse, "description": "Patient not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
@@ -83,59 +84,69 @@ async def update_vital_signs(
         Success response with confirmation message
         
     Raises:
-        HTTPException: 404 if patient not found, 400 for validation errors
+        HTTPException: 400 for invalid data, 404 if patient not found
     """
     try:
+        # Validate and sanitize patient ID (Requirement 6.2, 6.4)
+        try:
+            sanitized_patient_id = validate_patient_id(patient_id)
+        except ValueError as e:
+            logger.warning(f"Invalid patient ID format: {patient_id} - {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid patient ID format: {str(e)}",
+            )
+        
         # Initialize services
         vital_signs_service = VitalSignsService(db)
         risk_service = RiskAssessmentService(db)
         
         # Update vital signs (Requirement 2.1, 2.2)
         vital_signs_record = vital_signs_service.update_vital_signs(
-            patient_id=patient_id,
+            patient_id=sanitized_patient_id,
             vital_signs_data=vital_signs,
             recorded_by="API"
         )
         
         # Trigger risk assessment (Requirement 2.3)
         try:
-            risk_assessment = risk_service.assess_risk_for_patient(patient_id)
+            risk_assessment = risk_service.assess_risk_for_patient(sanitized_patient_id)
             logger.info(
-                f"Vital signs updated and risk assessed for patient {patient_id}: "
+                f"Vital signs updated and risk assessed for patient {sanitized_patient_id}: "
                 f"risk_score={risk_assessment.risk_score}, risk_flag={risk_assessment.risk_flag}"
             )
         except RiskAssessmentServiceError as e:
             # Log error but don't fail the vital signs update
-            logger.error(f"Risk assessment failed after vital signs update for patient {patient_id}: {e}")
+            logger.error(f"Risk assessment failed after vital signs update for patient {sanitized_patient_id}: {e}")
             # Continue - vital signs were successfully stored
         
         response = SuccessResponse(
             success=True,
-            message=f"Vital signs updated successfully for patient {patient_id}",
+            message=f"Vital signs updated successfully for patient {sanitized_patient_id}",
             data={
-                "patient_id": patient_id,
+                "patient_id": sanitized_patient_id,
                 "vital_signs_id": vital_signs_record.id,
                 "timestamp": vital_signs_record.timestamp.isoformat(),
             }
         )
         
-        logger.info(f"Successfully updated vital signs for patient {patient_id}")
+        logger.info(f"Successfully updated vital signs for patient {sanitized_patient_id}")
         return response
         
     except PatientNotFoundError as e:
-        logger.warning(f"Patient not found: {patient_id}")
+        logger.warning(f"Patient not found: {sanitized_patient_id}")
         raise HTTPException(
             status_code=404,
-            detail=f"Patient {patient_id} not found",
+            detail=f"Patient {sanitized_patient_id} not found",
         )
     except ValidationError as e:
-        logger.warning(f"Vital signs validation failed for patient {patient_id}: {e}")
+        logger.warning(f"Vital signs validation failed for patient {sanitized_patient_id}: {e}")
         raise HTTPException(
             status_code=400,
             detail=str(e),
         )
     except VitalSignsServiceError as e:
-        logger.error(f"Error updating vital signs for patient {patient_id}: {e}")
+        logger.error(f"Error updating vital signs for patient {sanitized_patient_id}: {e}")
         raise HTTPException(
             status_code=500,
             detail="Failed to update vital signs. Please try again later.",
@@ -153,7 +164,7 @@ async def update_vital_signs(
     response_model=HistoricalDataResponse,
     responses={
         200: {"description": "Historical data retrieved successfully"},
-        400: {"model": ErrorResponse, "description": "Invalid query parameters"},
+        400: {"model": ErrorResponse, "description": "Invalid query parameters or patient ID"},
         404: {"model": ErrorResponse, "description": "Patient not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
@@ -203,9 +214,19 @@ async def get_patient_history(
         Historical data response with chronologically ordered data points
         
     Raises:
-        HTTPException: 404 if patient not found, 400 for invalid parameters
+        HTTPException: 400 for invalid parameters, 404 if patient not found
     """
     try:
+        # Validate and sanitize patient ID (Requirement 6.2, 6.4)
+        try:
+            sanitized_patient_id = validate_patient_id(patient_id)
+        except ValueError as e:
+            logger.warning(f"Invalid patient ID format: {patient_id} - {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid patient ID format: {str(e)}",
+            )
+        
         # Initialize services and repositories
         vital_signs_service = VitalSignsService(db)
         vital_signs_repo = VitalSignsRepository(db)
@@ -222,14 +243,14 @@ async def get_patient_history(
         # Get vital signs history (Requirement 4.2)
         if start_time and end_time:
             vital_signs_list = vital_signs_service.get_vital_signs_history(
-                patient_id=patient_id,
+                patient_id=sanitized_patient_id,
                 start_time=start_time,
                 end_time=end_time,
                 limit=limit
             )
         else:
             vital_signs_list = vital_signs_service.get_vital_signs_history(
-                patient_id=patient_id,
+                patient_id=sanitized_patient_id,
                 limit=limit
             )
         
@@ -239,14 +260,14 @@ async def get_patient_history(
             # Find the risk assessment closest to this vital signs timestamp
             # In practice, there should be a risk assessment for each vital signs record
             risk_assessments = risk_repo.get_for_patient_in_time_range(
-                patient_id=patient_id,
+                patient_id=sanitized_patient_id,
                 start_time=vitals.timestamp,
                 end_time=vitals.timestamp
             )
             
             # If no exact match, get the next assessment after this timestamp
             if not risk_assessments:
-                all_assessments = risk_repo.get_for_patient(patient_id)
+                all_assessments = risk_repo.get_for_patient(sanitized_patient_id)
                 risk_assessment = None
                 for assessment in reversed(all_assessments):  # Oldest first
                     if assessment.assessment_time >= vitals.timestamp:
@@ -286,21 +307,21 @@ async def get_patient_history(
             actual_end = end_time or datetime.utcnow()
         
         response = HistoricalDataResponse(
-            patient_id=patient_id,
+            patient_id=sanitized_patient_id,
             start_time=actual_start,
             end_time=actual_end,
             data_points=data_points,
             total_count=len(data_points),
         )
         
-        logger.info(f"Retrieved {len(data_points)} historical data points for patient {patient_id}")
+        logger.info(f"Retrieved {len(data_points)} historical data points for patient {sanitized_patient_id}")
         return response
         
     except PatientNotFoundError as e:
-        logger.warning(f"Patient not found: {patient_id}")
+        logger.warning(f"Patient not found: {sanitized_patient_id}")
         raise HTTPException(
             status_code=404,
-            detail=f"Patient {patient_id} not found",
+            detail=f"Patient {sanitized_patient_id} not found",
         )
     except ValidationError as e:
         logger.warning(f"Invalid parameters for history query: {e}")
@@ -309,7 +330,7 @@ async def get_patient_history(
             detail=str(e),
         )
     except VitalSignsServiceError as e:
-        logger.error(f"Error retrieving history for patient {patient_id}: {e}")
+        logger.error(f"Error retrieving history for patient {sanitized_patient_id}: {e}")
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve patient history. Please try again later.",
